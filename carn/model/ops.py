@@ -4,10 +4,12 @@ import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
 
+
 def init_weights(modules):
     pass
    
 
+# 这个Module的作用就是每个通道的颜色减去某个数，目的应该是将各个通道的值映射到-1到1之间，提高训练速度
 class MeanShift(nn.Module):
     def __init__(self, mean_rgb, sub):
         super(MeanShift, self).__init__()
@@ -17,9 +19,12 @@ class MeanShift(nn.Module):
         g = mean_rgb[1] * sign
         b = mean_rgb[2] * sign
 
+        # 输入通道数为3，输出通道数为3，卷积核大小是1*1，stride是进行一次卷积后特征图滑动1格，padding是最边缘补0数
         self.shifter = nn.Conv2d(3, 3, 1, 1, 0)
+        # 用3*3的对角矩阵初始化卷积核
         self.shifter.weight.data = torch.eye(3).view(3, 3, 1, 1)
-        self.shifter.bias.data   = torch.Tensor([r, g, b])
+        # bias记录的是rgb的经验均值
+        self.shifter.bias.data = torch.Tensor([r, g, b])
 
         # Freeze the mean shift layer
         for params in self.shifter.parameters():
@@ -30,6 +35,7 @@ class MeanShift(nn.Module):
         return x
 
 
+# 这个Block的作用就是加一个conv+relu
 class BasicBlock(nn.Module):
     def __init__(self,
                  in_channels, out_channels,
@@ -48,6 +54,7 @@ class BasicBlock(nn.Module):
         return out
 
 
+# 残差网络，conv+relu+conv学习到残差，然后加到原始输入中，最后再一个relu。它可以看成是一种高级的卷积操作
 class ResidualBlock(nn.Module):
     def __init__(self, 
                  in_channels, out_channels):
@@ -67,12 +74,14 @@ class ResidualBlock(nn.Module):
         return out
 
 
+# carn作者提出了一种残差-E模块，用来提高效率。它可以看成是对上面那个module的替代
 class EResidualBlock(nn.Module):
     def __init__(self, 
                  in_channels, out_channels,
                  group=1):
         super(EResidualBlock, self).__init__()
 
+        # groups大于1就使用分组卷积，比如如果是2，输入通道和输出通道都是原来的一半，个由一个卷积去负责。
         self.body = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, 3, 1, 1, groups=group),
             nn.ReLU(inplace=True),
@@ -89,6 +98,7 @@ class EResidualBlock(nn.Module):
         return out
 
 
+# 将多个通道放大
 class UpsampleBlock(nn.Module):
     def __init__(self, 
                  n_channels, scale, multi_scale, 
@@ -100,7 +110,7 @@ class UpsampleBlock(nn.Module):
             self.up3 = _UpsampleBlock(n_channels, scale=3, group=group)
             self.up4 = _UpsampleBlock(n_channels, scale=4, group=group)
         else:
-            self.up =  _UpsampleBlock(n_channels, scale=scale, group=group)
+            self.up = _UpsampleBlock(n_channels, scale=scale, group=group)
 
         self.multi_scale = multi_scale
 
@@ -117,15 +127,15 @@ class UpsampleBlock(nn.Module):
 
 
 class _UpsampleBlock(nn.Module):
-    def __init__(self, 
-				 n_channels, scale, 
-				 group=1):
+    def __init__(self, n_channels, scale,group=1):
         super(_UpsampleBlock, self).__init__()
 
         modules = []
         if scale == 2 or scale == 4 or scale == 8:
             for _ in range(int(math.log(scale, 2))):
+                # 通过卷积操作将原来的通道数量变成原来的4倍
                 modules += [nn.Conv2d(n_channels, 4*n_channels, 3, 1, 1, groups=group), nn.ReLU(inplace=True)]
+                # 再把通道数量还原回原来的数量，但是长宽就变成原来的2倍
                 modules += [nn.PixelShuffle(2)]
         elif scale == 3:
             modules += [nn.Conv2d(n_channels, 9*n_channels, 3, 1, 1, groups=group), nn.ReLU(inplace=True)]

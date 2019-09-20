@@ -7,6 +7,8 @@ from PIL import Image
 import torch.utils.data as data
 import torchvision.transforms as transforms
 
+
+# 随机从一张图中扣出一块
 def random_crop(hr, lr, size, scale):
     h, w = lr.shape[:-1]
     x = random.randint(0, w-size)
@@ -22,6 +24,7 @@ def random_crop(hr, lr, size, scale):
 
 
 def random_flip_and_rotate(im1, im2):
+    # 上下左右随机翻转
     if random.random() < 0.5:
         im1 = np.flipud(im1)
         im2 = np.flipud(im2)
@@ -30,6 +33,7 @@ def random_flip_and_rotate(im1, im2):
         im1 = np.fliplr(im1)
         im2 = np.fliplr(im2)
 
+    # 随机旋转
     angle = random.choice([0, 1, 2, 3])
     im1 = np.rot90(im1, angle)
     im2 = np.rot90(im2, angle)
@@ -56,6 +60,7 @@ class TrainDataset(data.Dataset):
         
         h5f.close()
 
+        # 用来将突破转换成tensor
         self.transform = transforms.Compose([
             transforms.ToTensor()
         ])
@@ -63,6 +68,7 @@ class TrainDataset(data.Dataset):
     def __getitem__(self, index):
         size = self.size
 
+        # 每次选出所有图，然后切分出一块
         item = [(self.hr[index], self.lr[i][index]) for i, _ in enumerate(self.lr)]
         item = [random_crop(hr, lr, size, self.scale[i]) for i, (hr, lr) in enumerate(item)]
         item = [random_flip_and_rotate(hr, lr) for hr, lr in item]
@@ -100,6 +106,7 @@ class TestDataset(data.Dataset):
         hr = Image.open(self.hr[index])
         lr = Image.open(self.lr[index])
 
+        # 读出不经过缩放的所有像素
         hr = hr.convert("RGB")
         lr = lr.convert("RGB")
         filename = self.hr[index].split("/")[-1]

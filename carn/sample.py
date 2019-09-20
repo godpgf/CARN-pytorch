@@ -11,15 +11,16 @@ from torch.autograd import Variable
 from dataset import TestDataset
 from PIL import Image
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str)
-    parser.add_argument("--ckpt_path", type=str)
-    parser.add_argument("--group", type=int, default=1)
-    parser.add_argument("--sample_dir", type=str)
-    parser.add_argument("--test_data_dir", type=str, default="dataset/Urban100")
+    parser.add_argument("--model", type=str, default="carn_m")
+    parser.add_argument("--ckpt_path", type=str, default="./checkpoint/carn_m/carn_m_200000.pth")
+    parser.add_argument("--group", type=int, default=4)
+    parser.add_argument("--sample_dir", type=str, default="./sample")
+    parser.add_argument("--test_data_dir", type=str, default="dataset/DIV2K/DIV2K_valid")
     parser.add_argument("--cuda", action="store_true")
-    parser.add_argument("--scale", type=int, default=4)
+    parser.add_argument("--scale", type=int, default=2)
     parser.add_argument("--shave", type=int, default=20)
 
     return parser.parse_args()
@@ -41,7 +42,7 @@ def sample(net, device, dataset, cfg):
             h_half, w_half = int(h/2), int(w/2)
             h_chop, w_chop = h_half + cfg.shave, w_half + cfg.shave
 
-            lr_patch = torch.tensor((4, 3, h_chop, w_chop), dtype=torch.float)
+            lr_patch = torch.Tensor(4, 3, h_chop, w_chop)
             lr_patch[0].copy_(lr[:, 0:h_chop, 0:w_chop])
             lr_patch[1].copy_(lr[:, 0:h_chop, w-w_chop:w])
             lr_patch[2].copy_(lr[:, h-h_chop:h, 0:w_chop])
@@ -53,7 +54,7 @@ def sample(net, device, dataset, cfg):
             h, h_half, h_chop = h*scale, h_half*scale, h_chop*scale
             w, w_half, w_chop = w*scale, w_half*scale, w_chop*scale
 
-            result = torch.tensor((3, h, w), dtype=torch.float).to(device)
+            result = torch.Tensor(3, h, w).to(device)
             result[:, 0:h_half, 0:w_half].copy_(sr[0, :, 0:h_half, 0:w_half])
             result[:, 0:h_half, w_half:w].copy_(sr[1, :, 0:h_half, w_chop-w+w_half:w_chop])
             result[:, h_half:h, 0:w_half].copy_(sr[2, :, h_chop-h+h_half:h_chop, 0:w_half])
@@ -93,11 +94,13 @@ def sample(net, device, dataset, cfg):
 
 def main(cfg):
     module = importlib.import_module("model.{}".format(cfg.model))
-    net = module.Net(multi_scale=True, 
-                     group=cfg.group)
+    if cfg.scale > 0:
+        net = module.Net(scale=cfg.scale, group=cfg.group)
+    else:
+        net = module.Net(multi_scale=True, group=cfg.group)
     print(json.dumps(vars(cfg), indent=4, sort_keys=True))
 
-    state_dict = torch.load(cfg.ckpt_path)
+    state_dict = torch.load(cfg.ckpt_path, map_location=None if torch.cuda.is_available() else torch.device('cpu'))
     new_state_dict = OrderedDict()
     for k, v in state_dict.items():
         name = k
@@ -106,7 +109,7 @@ def main(cfg):
 
     net.load_state_dict(new_state_dict)
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     net = net.to(device)
     
     dataset = TestDataset(cfg.test_data_dir, cfg.scale)

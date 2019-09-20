@@ -6,16 +6,17 @@ import argparse
 import importlib
 from solver import Solver
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str)
-    parser.add_argument("--ckpt_name", type=str)
+    parser.add_argument("--model", type=str, default="carn_m")
+    parser.add_argument("--ckpt_name", type=str, default="carn_m")
     
     parser.add_argument("--print_interval", type=int, default=1000)
     parser.add_argument("--train_data_path", type=str, 
                         default="dataset/DIV2K_train.h5")
     parser.add_argument("--ckpt_dir", type=str,
-                        default="checkpoint")
+                        default="checkpoint/carn_m")
     parser.add_argument("--sample_dir", type=str,
                         default="sample/")
     
@@ -25,7 +26,7 @@ def parse_args():
 
     parser.add_argument("--verbose", action="store_true", default="store_true")
 
-    parser.add_argument("--group", type=int, default=1)
+    parser.add_argument("--group", type=int, default=4)
     
     parser.add_argument("--patch_size", type=int, default=64)
     parser.add_argument("--batch_size", type=int, default=64)
@@ -39,6 +40,7 @@ def parse_args():
 
     return parser.parse_args()
 
+
 def main(cfg):
     # dynamic import using --model argument
     net = importlib.import_module("model.{}".format(cfg.model)).Net
@@ -46,6 +48,7 @@ def main(cfg):
     
     solver = Solver(net, cfg)
     solver.fit()
+
 
 if __name__ == "__main__":
     cfg = parse_args()

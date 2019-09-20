@@ -1,7 +1,6 @@
 import os
 import random
 import numpy as np
-import scipy.misc as misc
 import skimage.measure as measure
 from tensorboardX import SummaryWriter
 import torch
@@ -10,7 +9,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from dataset import TrainDataset, TestDataset
 
-class Solver():
+
+class Solver(object):
     def __init__(self, model, cfg):
         if cfg.scale > 0:
             self.refiner = model(scale=cfg.scale, 
@@ -26,6 +26,7 @@ class Solver():
         elif cfg.loss_fn in ["SmoothL1"]:
             self.loss_fn = nn.SmoothL1Loss()
 
+        # 添加过滤器，优化的par是不需要计算梯度的
         self.optim = optim.Adam(
             filter(lambda p: p.requires_grad, self.refiner.parameters()), 
             cfg.lr)
@@ -37,8 +38,7 @@ class Solver():
                                        batch_size=cfg.batch_size,
                                        num_workers=1,
                                        shuffle=True, drop_last=True)
-        
-        
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.refiner = self.refiner.to(self.device)
         self.loss_fn = self.loss_fn
@@ -57,10 +57,10 @@ class Solver():
 
     def fit(self):
         cfg = self.cfg
+        # 开启多gpu训练
         refiner = nn.DataParallel(self.refiner, 
                                   device_ids=range(cfg.num_gpu))
-        
-        learning_rate = cfg.lr
+
         while True:
             for inputs in self.train_loader:
                 self.refiner.train()
@@ -82,11 +82,14 @@ class Solver():
                 
                 self.optim.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm(self.refiner.parameters(), cfg.clip)
+                # 防止梯度爆炸或者消失
+                nn.utils.clip_grad_norm_(self.refiner.parameters(), cfg.clip)
+                # 只有执行step，梯度才会更新
                 self.optim.step()
 
                 learning_rate = self.decay_learning_rate()
                 for param_group in self.optim.param_groups:
+                    # 更新学习率
                     param_group["lr"] = learning_rate
                 
                 self.step += 1
@@ -109,7 +112,7 @@ class Solver():
         mean_psnr = 0
         self.refiner.eval()
         
-        test_data   = TestDataset(test_data_dir, scale=scale)
+        test_data = TestDataset(test_data_dir, scale=scale)
         test_loader = DataLoader(test_data,
                                  batch_size=1,
                                  num_workers=1,
